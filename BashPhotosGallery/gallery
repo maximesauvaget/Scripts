@@ -1,0 +1,193 @@
+#! /bin/bash
+#    This tiny script make a web gallery of your pictures with Shadowbox JS and Cooliris compatibility
+#    Copyright (C) 2009 Maxime Sauvaget
+#    Email : maxime@caskroot.com
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+
+#USAGE
+if [ "$1" = "" -o "$1" = "-h" -o "$1" = "--help" ]; then
+	echo "Ce script cree une page web de galerie photos."
+	echo -e "\n UTILISATION :"
+	echo "gallery {chemin vers les images}"
+	echo -e "\n OPTIONS : \n[--titre \"titre de la galerie\"]\n[--affichage {oui|non}]\n[--largeur-max {entier}]\n[--hauteur-max {entier}]"
+	echo -e "\n ----------------------------------------"
+	echo "This script creates a web gallery for your pictures."
+	echo -e "\n USAGE :"
+	echo "gallery {path to your pictures}"
+	echo -e "\n OPTIONS : \n[--title \"Your gallery's title\"]\n[--display {yes|no}]\n[--max-width {integer}]\n[--max-height {integer}]"
+	exit 1
+fi
+
+#DEFAULT VALUES
+TITLE=Galerie\ Photos
+DISPLAY=no
+MAX_WIDTH=300
+MAX_HEIGHT=200
+PATH_STATIC_FILES=/usr/local/share/gallery_script_static_files
+
+j=0
+for i in "$@"; do
+	paramArray[j]=$i
+	((j++))
+done
+
+count=1
+for i in "$@"; do
+	case $i in 
+	--title|--titre)
+	TITLE=${paramArray["$count"]}
+	;; 
+	--display|--affichage) 
+		case ${paramArray["$count"]} in
+		oui | yes)
+		DISPLAY=yes
+		;;
+		non | no)
+		DISPLAY=no
+		;;
+		esac
+	;; 
+	--max-width|--largeur-max)
+	MAX_WIDTH=${paramArray["$count"]}
+	;;
+	--max-height|--hauteur-max)
+	MAX_HEIGHT=${paramArray["$count"]}
+	;;
+	esac
+	((count++))
+done
+
+#RSS
+echo "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" > photos.rss
+echo "<rss version=\"2.0\" xmlns:media=\"http://search.yahoo.com/mrss/\"" >> photos.rss
+echo "xmlns:atom=\"http://www.w3.org/2005/Atom\">" >> photos.rss
+echo "<channel>" >> photos.rss
+echo "<title>$TITLE</title>" >> photos.rss
+
+#HTML
+echo "<html>" > photos.html
+echo "<head>" >> photos.html
+echo "<title>$TITLE</title>" >> photos.html
+echo "<link rel=\"stylesheet\" type=\"text/css\" href=\"static/shadowbox/shadowbox.css\">
+<script type=\"text/javascript\" src=\"static/shadowbox/shadowbox.js\"></script>
+<script type=\"text/javascript\">
+Shadowbox.init();
+</script>" >> photos.html
+echo "<link rel=\"alternate\" href=\"photos.rss\" type=\"application/rss+xml\" title=\"\" id=\"gallery\" />" >> photos.html
+echo "<script type=\"text/javascript\" src=\"http://lite.piclens.com/current/piclens.js\"></script>" >> photos.html
+echo "<style type=\"text/css\">
+body {	
+	background-color : #2d2d2d;
+	margin-top:0px;
+}
+a {
+	color: #ddd;
+}
+#header {
+	margin : auto;
+	text-align : center;
+	margin-bottom : 0px;
+}
+#title {
+	text-align : center;
+	color : #ddd;
+	font-family : Arial;
+	font-size : 2.5em;
+}
+#main {
+	width: 80%;
+	margin: 20px auto;
+	text-align : center;
+	color : #ddd;
+}
+#text {
+	font-family:Arial;
+	font-size: 1em;
+	color:#ddd;
+	line-height:18px;
+}
+.border {
+	border: 1px solid #ddd;
+	padding: 5px;
+	margin: 7px;
+}
+img {
+	border: 0;
+}
+</style>" >> photos.html
+echo "</head>" >> photos.html
+echo "<body>" >> photos.html
+echo "<div id=\"header\"><img src=\"static/header.png\"/></div>" >> photos.html
+if [ ! "$TITLE" = "" ] && [ "$DISPLAY" = yes ]; then
+	echo "<div id=\"title\">$TITLE</div>" >> photos.html
+fi
+echo "<div id=\"main\">" >> photos.html
+echo "<hr size=\"1\" color=\"#cccccc\">" >> photos.html
+echo "<div id=\"text\">Téléchargez <a href=\"http://www.piclens.com\">PicLens</a> afin d'activer le diaporama plein écran.<br>
+Sur les navigateurs non compatibles l'expérience visuelle sera réalisée uniquement avec l'effet ShadowBox.<br><br>
+<a href=javascript:PicLensLite.start();>Afficher le diaporama plein écran avec PicLens Lite</a></div>" >> photos.html
+
+echo "CREATION DES MINIATURES | THUMBNAILS CREATION"
+
+for i in "$@"; do
+	if [ -f "$i" ]; then
+		#guid
+		guid=$(echo "$i" | md5sum)
+	
+		#dirname
+		dirpath=$(dirname $i)
+		
+		# get image infos
+		iinfos=$(identify -format "%m:%wx%h:%t:%e:%b" "$i")
+ 
+		# get image name, without extension
+		name=$(echo $iinfos | awk -F":" '{print $3}')
+ 
+		# get extension
+		extension=$(echo $iinfos | awk -F":" '{print $4}')
+
+		# resize image
+		convert "$i" -resize "$MAX_WIDTH"x"$MAX_HEIGHT" "$name".$extension
+		
+		if [ ! -d $dirpath/thumbs ]; then
+			mkdir $dirpath/thumbs
+		fi
+
+		mv ./"$name".$extension $dirpath/thumbs/$name.$extension
+		
+		echo "<item>" >> photos.rss
+		echo "<guid>$guid</guid>" >> photos.rss
+		echo "<media:thumbnail url=\"$dirpath/thumbs/$name.$extension\"/>" >> photos.rss
+		echo "<media:content url=\"$i\"/>" >> photos.rss
+		echo "</item>" >> photos.rss
+		
+		echo "<a rel=\"shadowbox[photos];options={counterType:'skip',continuous:true,animSequence:'sync'}\" href=\"$i\"><img class=\"border\" src=\"$dirpath/thumbs/$name.$extension\"/></a>" >> photos.html
+		
+	fi
+done
+
+echo "</channel>" >> photos.rss
+echo "</rss>" >> photos.rss
+
+echo "<hr size=\"1\" color=\"#cccccc\">" >> photos.html
+echo "</div>
+</body>
+</html>" >> photos.html
+
+echo "COPIE DES FICHIERS REQUIS | COPY OF REQUIRED FILES"
+cp -r $PATH_STATIC_FILES ./static
+
+echo "FIN | END"
